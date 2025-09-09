@@ -21,37 +21,39 @@ export function makeBarretenbergZKOperator({
 	fetcher,
 	options: { threads = 1 } = {}
 }: MakeZKOperatorOpts<BarretenbergOpts>): BarretenbergOperator {
-	// Preload promises like snarkjs pattern
-	let circuitPromise: Promise<CompiledCircuit> | undefined
-	let backendPromise: Promise<{ noir: Noir, backend: UltraHonkBackend }> | undefined
+	let circuit: CompiledCircuit
+	let noir: Noir
+	let backend: UltraHonkBackend
 
-	function getCircuit(logger?: Logger): Promise<CompiledCircuit> {
-		return circuitPromise ||= (async() => {
+	async function loadCircuit(logger?: Logger): Promise<CompiledCircuit> {
+		if(!circuit) {
 			logger?.info?.(`Loading Noir circuit for ${algorithm}`)
 			const circuitData = await fetcher.fetch(
 				'barretenberg',
 				getCircuitFilename(algorithm),
 				logger
 			)
-			const circuit = JSON.parse(new TextDecoder().decode(circuitData)) as CompiledCircuit
+			circuit = JSON.parse(new TextDecoder().decode(circuitData)) as CompiledCircuit
 			logger?.info?.('Circuit loaded successfully')
-			return circuit
-		})()
+		}
+
+		return circuit
 	}
 
-	function getBackend(logger?: Logger): Promise<{ noir: Noir, backend: UltraHonkBackend }> {
-		return backendPromise ||= (async() => {
-			const loadedCircuit = await getCircuit(logger)
-			const noir = new Noir(loadedCircuit)
-			const backend = new UltraHonkBackend(loadedCircuit.bytecode, { threads })
+	async function initializeBackend(logger?: Logger): Promise<{ noir: Noir, backend: UltraHonkBackend }> {
+		if(!noir || !backend) {
+			const loadedCircuit = await loadCircuit(logger)
+			noir = new Noir(loadedCircuit)
+			backend = new UltraHonkBackend(loadedCircuit.bytecode, { threads })
 			logger?.info?.(`Barretenberg backend initialized with ${threads} threads`)
-			return { noir, backend }
-		})()
+		}
+
+		return { noir, backend }
 	}
 
 	return {
 		async generateWitness(input: ZKProofInput, logger?: Logger): Promise<Uint8Array> {
-			const { noir: noirInstance } = await getBackend(logger)
+			const { noir: noirInstance } = await initializeBackend(logger)
 
 			// Convert input to Noir witness format
 			const noirInput = convertToNoirWitness(algorithm, input)
@@ -66,7 +68,7 @@ export function makeBarretenbergZKOperator({
 		},
 
 		async ultrahonkProve(witness: Uint8Array, logger?: Logger): Promise<{ proof: Uint8Array }> {
-			const { backend: backendInstance } = await getBackend(logger)
+			const { backend: backendInstance } = await initializeBackend(logger)
 
 			logger?.info?.('Generating proof with UltraHonk backend...')
 			const startTime = Date.now()
@@ -91,7 +93,7 @@ export function makeBarretenbergZKOperator({
 			proof: Uint8Array | string,
 			logger?: Logger
 		): Promise<boolean> {
-			const { backend: backendInstance } = await getBackend(logger)
+			const { backend: backendInstance } = await initializeBackend(logger)
 			logger?.info?.('Verifying proof with UltraHonk backend...')
 			const startTime = Date.now()
 
@@ -120,18 +122,14 @@ export function makeBarretenbergZKOperator({
 		},
 
 		// Clean up resources - important for preventing memory leaks
-		async destroy(): Promise<void> {
-			if (backendPromise) {
-				try {
-					const { backend } = await backendPromise
+		async release(): Promise<void> {
+			if (backend) {
 					await backend.destroy()
-				} catch (error) {
-					// Backend might not be initialized or already destroyed
-				}
 			}
-			// Clear cached promises
-			circuitPromise = undefined
-			backendPromise = undefined
+			// Clear cached instances
+			circuit = undefined as any
+			noir = undefined as any
+			backend = undefined as any
 		}
 	}
 }

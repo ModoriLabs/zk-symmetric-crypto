@@ -35,15 +35,17 @@ const BENCHES = ALL_ALGOS.map((algo) => {
 			async() => {
 				try {
 					const now = Date.now()
-					await Promise.all(
-						witnesses.map((witness) => {
-							if(isBarretenbergOperator(operator)) {
-								return operator.ultrahonkProve(witness, logger)
-							} else {
-								return operator.groth16Prove(witness)
-							}
-						})
-					)
+					if(isBarretenbergOperator(operator)) {
+						// Sequential processing for UltraHonk
+						for (const witness of witnesses) {
+							await operator.ultrahonkProve(witness, logger)
+						}
+					} else {
+						// Parallel processing for other operators
+						await Promise.all(
+							witnesses.map(witness => operator.groth16Prove(witness))
+						)
+					}
 					const elapsed = Date.now() - now
 					console.log(
 						`Generated ${witnesses.length} proofs for ${algo} using ${engine}, ${elapsed}ms`
@@ -109,7 +111,7 @@ async function prepareDataForAlgo(
 			publicInput
 		})
 
-		const wtnsSerialised = await operator.generateWitness(witness)
+		const wtnsSerialised = await operator.generateWitness(witness, logger)
 
 		witnesses.push(wtnsSerialised)
 	}

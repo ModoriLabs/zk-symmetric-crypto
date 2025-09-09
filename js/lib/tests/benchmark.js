@@ -6,6 +6,13 @@ const config_1 = require("../config");
 const types_1 = require("../types");
 const zk_1 = require("../zk");
 const utils_1 = require("./utils");
+const logger = {
+    info: console.log,
+    debug: console.log,
+    error: console.error,
+    trace: console.log,
+    warn: console.log
+};
 const ALL_ALGOS = [
     'chacha20',
     //'aes-256-ctr',
@@ -23,14 +30,16 @@ const BENCHES = ALL_ALGOS.map((algo) => {
         bench = bench.add(engine, async () => {
             try {
                 const now = Date.now();
-                await Promise.all(witnesses.map((witness) => {
-                    if ((0, types_1.isBarretenbergOperator)(operator)) {
-                        return operator.ultrahonkProve(witness);
+                if ((0, types_1.isBarretenbergOperator)(operator)) {
+                    // Sequential processing for UltraHonk
+                    for (const witness of witnesses) {
+                        await operator.ultrahonkProve(witness, logger);
                     }
-                    else {
-                        return operator.groth16Prove(witness);
-                    }
-                }));
+                }
+                else {
+                    // Parallel processing for other operators
+                    await Promise.all(witnesses.map(witness => operator.groth16Prove(witness)));
+                }
                 const elapsed = Date.now() - now;
                 console.log(`Generated ${witnesses.length} proofs for ${algo} using ${engine}, ${elapsed}ms`);
             }
@@ -74,7 +83,7 @@ async function prepareDataForAlgo(algo, operator) {
             privateInput,
             publicInput
         });
-        const wtnsSerialised = await operator.generateWitness(witness);
+        const wtnsSerialised = await operator.generateWitness(witness, logger);
         witnesses.push(wtnsSerialised);
     }
     return witnesses;
