@@ -6,7 +6,7 @@ const path_1 = require("path");
 const util_1 = require("util");
 const execPromise = (0, util_1.promisify)(child_process_1.exec);
 const logger = console;
-const GIT_COMMIT_HASH_OF_CIRCUIT = '9ab94804a1d7400e74fe91412f4a0d238c15320f';
+const GIT_COMMIT_HASH_OF_CIRCUIT = 'd193cb84714302646d760fa58bb3bcbd323f2036';
 const CLONE_DIR = './zk-symmetric-crypto';
 const CLONE_CMD = [
     `git clone https://github.com/ModoriLabs/zk-symmetric-crypto ${CLONE_DIR}`,
