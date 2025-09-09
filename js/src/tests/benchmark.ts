@@ -1,9 +1,17 @@
 import { randomBytes } from 'crypto'
 import { Bench } from 'tinybench'
 import { CONFIG } from '../config'
-import { BarretenbergOperator, EncryptionAlgorithm, isBarretenbergOperator, PrivateInput, PublicInput, ZKOperator } from '../types'
+import { BarretenbergOperator, EncryptionAlgorithm, isBarretenbergOperator, Logger, PrivateInput, PublicInput, ZKOperator } from '../types'
 import { generateZkWitness } from '../zk'
 import { encryptData, ZK_CONFIG_MAP, ZK_CONFIGS } from './utils'
+
+const logger: Logger = {
+  info: console.log,
+  debug: console.log,
+  error: console.error,
+  trace: console.log,
+  warn: console.log
+}
 
 const ALL_ALGOS: EncryptionAlgorithm[] = [
 	'chacha20',
@@ -30,7 +38,7 @@ const BENCHES = ALL_ALGOS.map((algo) => {
 					await Promise.all(
 						witnesses.map((witness) => {
 							if(isBarretenbergOperator(operator)) {
-								return operator.ultrahonkProve(witness)
+								return operator.ultrahonkProve(witness, logger)
 							} else {
 								return operator.groth16Prove(witness)
 							}

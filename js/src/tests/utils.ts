@@ -91,9 +91,10 @@ export const ZK_CONFIG_MAP: {
 		makeBarretenbergZKOperator({
 			algorithm,
 			fetcher,
-			options: { maxProofConcurrency: 2 }
+			options: { threads: cpus().length }
 		})
 	),
 }
 
-export const ZK_CONFIGS = Object.keys(ZK_CONFIG_MAP) as ConfigItem[]
+// export const ZK_CONFIGS = Object.keys(ZK_CONFIG_MAP) as ConfigItem[]
+export const ZK_CONFIGS = ['barretenberg'] as ConfigItem[]
