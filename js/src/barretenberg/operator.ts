@@ -19,43 +19,39 @@ import { convertToNoirWitness, getCircuitFilename } from './utils'
 export function makeBarretenbergZKOperator({
 	algorithm,
 	fetcher,
-	options: { threads = 1, maxProofConcurrency = 2 } = {}
-}: MakeZKOperatorOpts<BarretenbergOpts & { maxProofConcurrency?: number }>): BarretenbergOperator {
-	let circuit: CompiledCircuit
-	let noir
-	let backend
+	options: { threads = 1 } = {}
+}: MakeZKOperatorOpts<BarretenbergOpts>): BarretenbergOperator {
+	// Preload promises like snarkjs pattern
+	let circuitPromise: Promise<CompiledCircuit> | undefined
+	let backendPromise: Promise<{ noir: Noir, backend: UltraHonkBackend }> | undefined
 
-	const concurrencyLimiter = new PQueue({ concurrency: maxProofConcurrency })
-
-	async function loadCircuit(logger?: Logger): Promise<CompiledCircuit> {
-		if(!circuit) {
+	function getCircuit(logger?: Logger): Promise<CompiledCircuit> {
+		return circuitPromise ||= (async() => {
 			logger?.info?.(`Loading Noir circuit for ${algorithm}`)
 			const circuitData = await fetcher.fetch(
 				'barretenberg',
 				getCircuitFilename(algorithm),
 				logger
 			)
-			circuit = JSON.parse(new TextDecoder().decode(circuitData)) as CompiledCircuit
+			const circuit = JSON.parse(new TextDecoder().decode(circuitData)) as CompiledCircuit
 			logger?.info?.('Circuit loaded successfully')
-		}
-
-		return circuit
+			return circuit
+		})()
 	}
 
-	async function initializeBackend(logger?: Logger): Promise<{ noir: Noir, backend: UltraHonkBackend }> {
-		if(!noir || !backend) {
-			const loadedCircuit = await loadCircuit(logger)
-			noir = new Noir(loadedCircuit)
-			backend = new UltraHonkBackend(loadedCircuit.bytecode, { threads })
+	function getBackend(logger?: Logger): Promise<{ noir: Noir, backend: UltraHonkBackend }> {
+		return backendPromise ||= (async() => {
+			const loadedCircuit = await getCircuit(logger)
+			const noir = new Noir(loadedCircuit)
+			const backend = new UltraHonkBackend(loadedCircuit.bytecode, { threads })
 			logger?.info?.(`Barretenberg backend initialized with ${threads} threads`)
-		}
-
-		return { noir, backend }
+			return { noir, backend }
+		})()
 	}
 
 	return {
 		async generateWitness(input: ZKProofInput, logger?: Logger): Promise<Uint8Array> {
-			const { noir: noirInstance } = await initializeBackend(logger)
+			const { noir: noirInstance } = await getBackend(logger)
 
 			// Convert input to Noir witness format
 			const noirInput = convertToNoirWitness(algorithm, input)
@@ -70,27 +66,24 @@ export function makeBarretenbergZKOperator({
 		},
 
 		async ultrahonkProve(witness: Uint8Array, logger?: Logger): Promise<{ proof: Uint8Array }> {
-			return concurrencyLimiter.add(async() => {
-				const { backend: backendInstance } = await initializeBackend(logger)
-				// console.log('backendInstance', backendInstance)
+			const { backend: backendInstance } = await getBackend(logger)
 
-				logger?.info?.('Generating proof with UltraHonk backend...')
-				const startTime = Date.now()
+			logger?.info?.('Generating proof with UltraHonk backend...')
+			const startTime = Date.now()
 
-				const proofData = await backendInstance.generateProof(witness)
-				const proofTime = Date.now() - startTime
-				logger?.info?.(`Proof generated in ${proofTime}ms, size: ${proofData.proof.length} bytes`)
+			const proofData = await backendInstance.generateProof(witness)
+			const proofTime = Date.now() - startTime
+			logger?.info?.(`Proof generated in ${proofTime}ms, size: ${proofData.proof.length} bytes`)
 
-				// Store the full proof data (including public inputs) in the proof bytes
-				// We'll need to reconstruct this for verification
-				const fullProof = {
-					proof: Array.from(proofData.proof),
-					publicInputs: proofData.publicInputs
-				}
-				const proofBytes = new TextEncoder().encode(JSON.stringify(fullProof))
+			// Store the full proof data (including public inputs) in the proof bytes
+			// We'll need to reconstruct this for verification
+			const fullProof = {
+				proof: Array.from(proofData.proof),
+				publicInputs: proofData.publicInputs
+			}
+			const proofBytes = new TextEncoder().encode(JSON.stringify(fullProof))
 
-				return { proof: proofBytes }
-			})
+			return { proof: proofBytes }
 		},
 
 		async ultrahonkVerify(
@@ -98,7 +91,7 @@ export function makeBarretenbergZKOperator({
 			proof: Uint8Array | string,
 			logger?: Logger
 		): Promise<boolean> {
-			const { backend: backendInstance } = await initializeBackend(logger)
+			const { backend: backendInstance } = await getBackend(logger)
 			logger?.info?.('Verifying proof with UltraHonk backend...')
 			const startTime = Date.now()
 
@@ -125,5 +118,20 @@ export function makeBarretenbergZKOperator({
 				return false
 			}
 		},
+
+		// Clean up resources - important for preventing memory leaks
+		async destroy(): Promise<void> {
+			if (backendPromise) {
+				try {
+					const { backend } = await backendPromise
+					await backend.destroy()
+				} catch (error) {
+					// Backend might not be initialized or already destroyed
+				}
+			}
+			// Clear cached promises
+			circuitPromise = undefined
+			backendPromise = undefined
+		}
 	}
 }
