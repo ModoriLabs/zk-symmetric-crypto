@@ -1,5 +1,6 @@
 import { randomBytes } from 'crypto'
 import {
+	BarretenbergOperator,
 	CONFIG,
 	EncryptionAlgorithm,
 	generateProof,
@@ -52,7 +53,7 @@ describe.each(ZK_CONFIGS)('%s Engine Tests', (zkEngine) => {
 
 		const chunkSizeBytes = chunkSize * bitsPerWord / 8
 
-		let operator: ZKOperator
+		let operator: ZKOperator | BarretenbergOperator
 		beforeAll(async() => {
 			operator = await ZK_CONFIG_MAP[zkEngine](algorithm)
 		})
@@ -139,11 +140,14 @@ describe.each(ZK_CONFIGS)('%s Engine Tests', (zkEngine) => {
 				algorithm,
 				privateInput,
 				publicInput,
-				operator
+				operator,
 			})
-			// fill output with 0s
-			for(let i = 0;i < proof.plaintext.length;i++) {
-				proof.plaintext[i] = 0
+			if(zkEngine === 'barretenberg') {
+				(proof.proofData as Uint8Array)[0] = ((proof.proofData as Uint8Array)[0] + 1) % 256
+			} else {
+				for(let i = 0; i < proof.plaintext.length; i++) {
+					proof.plaintext[i] = 0
+				}
 			}
 
 			await expect(

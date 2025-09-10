@@ -28,9 +28,13 @@ const BENCHES = ALL_ALGOS.map((algo) => {
 				try {
 					const now = Date.now()
 					await Promise.all(
-						witnesses.map((witness) => (
-							operator.groth16Prove(witness)
-						))
+						witnesses.map((witness) => {
+							if(isBarretenbergOperator(operator)) {
+								return operator.ultrahonkProve(witness)
+							} else {
+								return operator.groth16Prove(witness)
+							}
+						})
 					)
 					const elapsed = Date.now() - now
 					console.log(
@@ -65,7 +69,7 @@ async function main() {
 
 async function prepareDataForAlgo(
 	algo: EncryptionAlgorithm,
-	operator: ZKOperator
+	operator: ZKOperator | BarretenbergOperator
 ) {
 	const { keySizeBytes, chunkSize, bitsPerWord } = CONFIG[algo]
 	const plaintext = new Uint8Array(randomBytes(DATA_LENGTH))
