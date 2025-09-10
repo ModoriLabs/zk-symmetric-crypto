@@ -4,6 +4,7 @@ import { cpus } from 'os'
 import { join } from 'path'
 import { makeBarretenbergZKOperator } from '../barretenberg/operator'
 import {
+	BarretenbergOperator,
 	EncryptionAlgorithm,
 	makeExpanderZkOperator,
 	makeGnarkZkOperator,
@@ -60,7 +61,7 @@ export function getEngineForConfigItem(item: ConfigItem) {
 }
 
 export const ZK_CONFIG_MAP: {
-	[E in ConfigItem]: (algorithm: EncryptionAlgorithm) => ZKOperator
+	[E in ConfigItem]: (algorithm: EncryptionAlgorithm) => ZKOperator | BarretenbergOperator
 } = {
 	'snarkjs': (algorithm) => (
 		makeSnarkJsZKOperator({
@@ -90,7 +91,7 @@ export const ZK_CONFIG_MAP: {
 		makeBarretenbergZKOperator({
 			algorithm,
 			fetcher,
-			options: { maxProofConcurrency: 2 }
+			options: { threads: cpus().length }
 		})
 	),
 }
