@@ -19,6 +19,9 @@ export function encryptData(
 	key: Uint8Array,
 	iv: Uint8Array
 ) {
+	console.log('!!!!!!!!!!!!!!!!enveryptData!!!!!!!!!!!!!!!!!!')
+	console.log('key', key)
+	console.log('iv', iv)
 	// chacha20 encrypt
 	const cipher = createCipheriv(
 		algorithm === 'chacha20'

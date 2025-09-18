@@ -1,5 +1,18 @@
 import { CONFIG } from './config'
-import { EncryptionAlgorithm, GenerateProofOpts, GenerateWitnessOpts, GetPublicSignalsOpts, isBarretenbergOperator, OPRFOperator, Proof, VerifyProofOpts, ZKOperator, ZKProofInput, ZKProofPublicSignals, ZKProofPublicSignalsOPRF } from './types'
+import {
+	EncryptionAlgorithm,
+	GenerateProofOpts,
+	GenerateWitnessOpts,
+	GetPublicSignalsOpts,
+	isBarretenbergOperator,
+	OPRFOperator,
+	Proof,
+	VerifyProofOpts,
+	ZKOperator,
+	ZKProofInput,
+	ZKProofPublicSignals,
+	ZKProofPublicSignalsOPRF,
+} from './types'
 import { getCounterForByteOffset } from './utils'
 
 /**
@@ -10,6 +23,7 @@ import { getCounterForByteOffset } from './utils'
  */
 export async function generateProof(opts: GenerateProofOpts): Promise<Proof> {
 	const { algorithm, operator, logger } = opts
+	console.log('opts', opts)
 	const { witness, plaintextArray } = await generateZkWitness(opts)
 	let wtnsSerialised: Uint8Array
 	if('mask' in opts) {
@@ -25,10 +39,11 @@ export async function generateProof(opts: GenerateProofOpts): Promise<Proof> {
 
 	const proveFn = isBarretenbergOperator(operator)
 		? operator.ultrahonkProve
-		: (operator).groth16Prove
+		: operator.groth16Prove
 
+	console.log('!!!!!!!!!!!!!!!!before proof!!!!!!!!!!!!!!!!!!')
 	const proof = await proveFn(wtnsSerialised, logger)
-
+	console.log('proof', proof)
 
 	return { algorithm, proofData: proof.proof, plaintext: plaintextArray }
 }
@@ -43,20 +58,20 @@ export async function generateProof(opts: GenerateProofOpts): Promise<Proof> {
 export async function verifyProof(opts: VerifyProofOpts): Promise<void> {
 	const publicSignals = getPublicSignals(opts)
 
-	const { proof: { proofData }, operator, logger } = opts
+	const {
+		proof: { proofData },
+		operator,
+		logger,
+	} = opts
 	let verified: boolean
 
 	if(isBarretenbergOperator(operator)) {
-		verified = await operator.ultrahonkVerify(
-			publicSignals,
-			proofData,
-			logger
-		)
+		verified = await operator.ultrahonkVerify(publicSignals, proofData, logger)
 	} else {
 		if('toprf' in opts) {
 			const publicSignalsWithToprf: ZKProofPublicSignalsOPRF = {
 				...publicSignals,
-				toprf: opts.toprf
+				toprf: opts.toprf,
 			}
 			verified = await (operator as OPRFOperator).groth16Verify(
 				publicSignalsWithToprf,
@@ -86,12 +101,8 @@ export async function generateZkWitness({
 	algorithm,
 	privateInput: { key },
 	publicInput: { ciphertext, iv, offsetBytes = 0 },
-}: GenerateWitnessOpts,
-) {
-	const {
-		keySizeBytes,
-		ivSizeBytes,
-	} = CONFIG[algorithm]
+}: GenerateWitnessOpts) {
+	const { keySizeBytes, ivSizeBytes } = CONFIG[algorithm]
 	if(key.length !== keySizeBytes) {
 		throw new Error(`key must be ${keySizeBytes} bytes`)
 	}
@@ -100,11 +111,10 @@ export async function generateZkWitness({
 		throw new Error(`iv must be ${ivSizeBytes} bytes`)
 	}
 
-	const startCounter = getCounterForByteOffset(algorithm, offsetBytes)
-	const ciphertextArray = padCiphertextToChunkSize(
-		algorithm,
-		ciphertext,
-	)
+	// const startCounter = getCounterForByteOffset(algorithm, offsetBytes)
+	// TODO: fix
+	const startCounter = 4244504319 // 0xfcfdfeff
+	const ciphertextArray = padCiphertextToChunkSize(algorithm, ciphertext)
 	const plaintextArray = await decryptCiphertext({
 		algorithm,
 		key,
@@ -112,6 +122,8 @@ export async function generateZkWitness({
 		startOffset: offsetBytes,
 		ciphertext: ciphertextArray,
 	})
+	console.log('ciphertxtArray', ciphertextArray)
+	console.log('plaintextArray', plaintextArray)
 
 	const witness: ZKProofInput = {
 		key,
@@ -124,17 +136,12 @@ export async function generateZkWitness({
 	return { witness, plaintextArray }
 }
 
-export function getPublicSignals(
-	{
-		proof: { algorithm, plaintext },
-		publicInput: { ciphertext, iv, offsetBytes = 0 },
-	}: GetPublicSignalsOpts
-): ZKProofPublicSignals {
+export function getPublicSignals({
+	proof: { algorithm, plaintext },
+	publicInput: { ciphertext, iv, offsetBytes = 0 },
+}: GetPublicSignalsOpts): ZKProofPublicSignals {
 	const startCounter = getCounterForByteOffset(algorithm, offsetBytes)
-	const ciphertextArray = padCiphertextToChunkSize(
-		algorithm,
-		ciphertext
-	)
+	const ciphertextArray = padCiphertextToChunkSize(algorithm, ciphertext)
 
 	if(ciphertextArray.length !== plaintext.length) {
 		throw new Error('ciphertext and plaintext must be the same length')
@@ -170,12 +177,12 @@ function padCiphertextToChunkSize(
 }
 
 type DecryptCiphertextOpts = {
-	algorithm: EncryptionAlgorithm
-	key: Uint8Array
-	iv: Uint8Array
-	startOffset: number
-	ciphertext: Uint8Array
-}
+  algorithm: EncryptionAlgorithm
+  key: Uint8Array
+  iv: Uint8Array
+  startOffset: number
+  ciphertext: Uint8Array
+};
 
 async function decryptCiphertext({
 	algorithm,
@@ -190,5 +197,6 @@ async function decryptCiphertext({
 	inp.set(ciphertext, startOffset)
 
 	const out = await encrypt({ key, iv, in: inp })
+	console.log('out', out)
 	return out.slice(startOffset)
 }

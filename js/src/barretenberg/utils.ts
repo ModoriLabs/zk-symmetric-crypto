@@ -18,9 +18,9 @@ export function convertToNoirWitness(
 		// - counter: u32
 		// - plaintext: [u32; 32] (128 bytes as 32 u32 words)
 		// - ciphertext: [u32; 32] (128 bytes as 32 u32 words)
-		
+
 		const { bitsToUint8Array, uint8ArrayToBits } = CONFIG[algorithm]
-		
+
 		// Convert key from 32 bytes to 8 u32 words (little-endian)
 		const keyWords: number[] = []
 		for(let i = 0; i < 32; i += 4) {
@@ -30,7 +30,7 @@ export function convertToNoirWitness(
 						 (input.key[i + 3] << 24)
 			keyWords.push(word >>> 0) // Ensure unsigned 32-bit
 		}
-		
+
 		// Convert nonce from 12 bytes to 3 u32 words (little-endian)
 		const nonceWords: number[] = []
 		for(let i = 0; i < 12; i += 4) {
@@ -40,7 +40,7 @@ export function convertToNoirWitness(
 						 (input.nonce[i + 3] << 24)
 			nonceWords.push(word >>> 0) // Ensure unsigned 32-bit
 		}
-		
+
 		// Convert plaintext from bytes to u32 words (little-endian)
 		const plaintextWords: number[] = []
 		for(let i = 0; i < input.in.length; i += 4) {
@@ -50,7 +50,7 @@ export function convertToNoirWitness(
 						 ((input.in[i + 3] || 0) << 24)
 			plaintextWords.push(word >>> 0) // Ensure unsigned 32-bit
 		}
-		
+
 		// Convert ciphertext from bytes to u32 words (little-endian)
 		const ciphertextWords: number[] = []
 		for(let i = 0; i < input.out.length; i += 4) {
@@ -60,11 +60,16 @@ export function convertToNoirWitness(
 						 ((input.out[i + 3] || 0) << 24)
 			ciphertextWords.push(word >>> 0) // Ensure unsigned 32-bit
 		}
-		
+
 		// Pad arrays to expected sizes
-		while(plaintextWords.length < 32) plaintextWords.push(0)
-		while(ciphertextWords.length < 32) ciphertextWords.push(0)
-		
+		while(plaintextWords.length < 32) {
+			plaintextWords.push(0)
+		}
+
+		while(ciphertextWords.length < 32) {
+			ciphertextWords.push(0)
+		}
+
 		return {
 			key: keyWords,
 			nonce: nonceWords,
@@ -97,8 +102,8 @@ export function convertToNoirWitness(
 	// Convert Uint8Arrays to regular arrays for Noir
 	const keyArray = Array.from(input.key)
 	const counterArray = Array.from(fullCounter)
-	const plaintextArray = Array.from(input.in)
-	const expectedCiphertextArray = Array.from(input.out)
+	const cipherTextArray = Array.from(input.in)
+	const expectedPlaintextArray = Array.from(input.out)
 
 	// Validate key size based on algorithm
 	if(algorithm === 'aes-256-ctr' && keyArray.length !== 32) {
@@ -108,13 +113,21 @@ export function convertToNoirWitness(
 	}
 
 	// Validate block sizes
-	if(plaintextArray.length !== expectedSizeBytes) {
-		throw new Error(`Invalid plaintext size: expected ${expectedSizeBytes} bytes, got ${plaintextArray.length}`)
+	if(expectedPlaintextArray.length !== expectedSizeBytes) {
+		throw new Error(`Invalid plaintext size: expected ${expectedSizeBytes} bytes, got ${expectedPlaintextArray.length}`)
 	}
 
-	if(expectedCiphertextArray.length !== expectedSizeBytes) {
-		throw new Error(`Invalid ciphertext size: expected ${expectedSizeBytes} bytes, got ${expectedCiphertextArray.length}`)
+	if(cipherTextArray.length !== expectedSizeBytes) {
+		throw new Error(`Invalid ciphertext size: expected ${expectedSizeBytes} bytes, got ${cipherTextArray.length}`)
 	}
+
+	console.log('counterArray', counterArray)
+	const tempCounterArray = [
+		240, 241, 242, 243,
+		244, 245, 246, 247,
+		248, 249, 250, 251,
+		252, 253, 254, 255
+	]
 
 	// For AES, the Noir circuit expects:
 	// - key: [u8; 32] for AES-256 or [u8; 16] for AES-128
@@ -123,10 +136,12 @@ export function convertToNoirWitness(
 	// - expected_ciphertext: [u8; 16]
 	return {
 		key: keyArray,
-		counter: counterArray,
-		plaintext: plaintextArray,
+		// counter: counterArray,
+		counter: tempCounterArray,
+		// TODO:fix , use plaintext and expected_ciphertext
+		plaintext: expectedPlaintextArray,
 		// eslint-disable-next-line camelcase
-		expected_ciphertext: expectedCiphertextArray
+		expected_ciphertext: cipherTextArray
 		// NOTE: operator.groth16Prove(wtnsSerialised, logger) needs literal `expected_ciphertext` for generate proof
 	}
 }

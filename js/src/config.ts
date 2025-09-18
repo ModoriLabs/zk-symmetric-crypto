@@ -73,6 +73,7 @@ function makeAesCtr(keyLenBits: number): AlgorithmConfig['encrypt'] {
 			false,
 			['encrypt']
 		)
+		console.log('keyImp', keyImp)
 		const buff = await subtle.encrypt(
 			{ name: 'AES-GCM', iv },
 			keyImp,
