@@ -102,8 +102,9 @@ export function convertToNoirWitness(
 	// Convert Uint8Arrays to regular arrays for Noir
 	const keyArray = Array.from(input.key)
 	const counterArray = Array.from(fullCounter)
-	const plaintextArray = Array.from(input.in)
-	const expectedCiphertextArray = Array.from(input.out)
+	// !NOTE: use ciphertext as input, plaintext as output
+	const cipherTextArray = Array.from(input.in)
+	const plainTextArray = Array.from(input.out)
 
 	// Validate key size based on algorithm
 	if(algorithm === 'aes-256-ctr' && keyArray.length !== 32) {
@@ -113,12 +114,12 @@ export function convertToNoirWitness(
 	}
 
 	// Validate block sizes
-	if(plaintextArray.length !== expectedSizeBytes) {
-		throw new Error(`Invalid plaintext size: expected ${expectedSizeBytes} bytes, got ${plaintextArray.length}`)
+	if(plainTextArray.length !== expectedSizeBytes) {
+		throw new Error(`Invalid plaintext size: expected ${expectedSizeBytes} bytes, got ${plainTextArray.length}`)
 	}
 
-	if(expectedCiphertextArray.length !== expectedSizeBytes) {
-		throw new Error(`Invalid ciphertext size: expected ${expectedSizeBytes} bytes, got ${expectedCiphertextArray.length}`)
+	if(cipherTextArray.length !== expectedSizeBytes) {
+		throw new Error(`Invalid ciphertext size: expected ${expectedSizeBytes} bytes, got ${cipherTextArray.length}`)
 	}
 
 	// For AES, the Noir circuit expects:
@@ -128,10 +129,10 @@ export function convertToNoirWitness(
 	// - expected_ciphertext: [u8; 16]
 	return {
 		key: keyArray,
-		counter: counterArray,
-		plaintext: plaintextArray,
 		// eslint-disable-next-line camelcase
-		expected_ciphertext: expectedCiphertextArray
+		counter: counterArray,
+		plaintext: plainTextArray,
+		ciphertext: cipherTextArray
 		// NOTE: operator.groth16Prove(wtnsSerialised, logger) needs literal `expected_ciphertext` for generate proof
 	}
 }
