@@ -28,9 +28,7 @@ const ALL_ALGOS: EncryptionAlgorithm[] = [
 ]
 
 const SUPPORTED_ALGO_MAP: { [T in ZKEngine]: EncryptionAlgorithm[] } = {
-	// TODO: impl more algos for barretenberg
-	// barretenberg: ['aes-256-ctr', 'aes-128-ctr'],
-	barretenberg: ['aes-128-ctr', 'chacha20'],
+	barretenberg: ['aes-128-ctr', 'aes-256-ctr', 'chacha20'],
 	expander: ['chacha20'],
 	gnark: ALL_ALGOS,
 	snarkjs: ALL_ALGOS,
