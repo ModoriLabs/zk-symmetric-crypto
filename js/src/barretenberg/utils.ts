@@ -12,8 +12,71 @@ export function convertToNoirWitness(
 	input: ZKProofInput
 ): NoirWitnessInput {
 	if(algorithm === 'chacha20') {
-		// ChaCha20 uses different input format
-		return convertChaCha20ToNoirWitness(input)
+		// ChaCha20 Noir circuit expects:
+		// - key: [u32; 8] (32 bytes as 8 u32 words)
+		// - nonce: [u32; 3] (12 bytes as 3 u32 words)
+		// - counter: u32
+		// - plaintext: [u32; 32] (128 bytes as 32 u32 words)
+		// - ciphertext: [u32; 32] (128 bytes as 32 u32 words)
+
+		const { bitsToUint8Array, uint8ArrayToBits } = CONFIG[algorithm]
+
+		// Convert key from 32 bytes to 8 u32 words (little-endian)
+		const keyWords: number[] = []
+		for(let i = 0; i < 32; i += 4) {
+			const word = (input.key[i]) |
+						 (input.key[i + 1] << 8) |
+						 (input.key[i + 2] << 16) |
+						 (input.key[i + 3] << 24)
+			keyWords.push(word >>> 0) // Ensure unsigned 32-bit
+		}
+
+		// Convert nonce from 12 bytes to 3 u32 words (little-endian)
+		const nonceWords: number[] = []
+		for(let i = 0; i < 12; i += 4) {
+			const word = (input.nonce[i]) |
+						 (input.nonce[i + 1] << 8) |
+						 (input.nonce[i + 2] << 16) |
+						 (input.nonce[i + 3] << 24)
+			nonceWords.push(word >>> 0) // Ensure unsigned 32-bit
+		}
+
+		// Convert plaintext from bytes to u32 words (little-endian)
+		const plaintextWords: number[] = []
+		for(let i = 0; i < input.in.length; i += 4) {
+			const word = (input.in[i] || 0) |
+						 ((input.in[i + 1] || 0) << 8) |
+						 ((input.in[i + 2] || 0) << 16) |
+						 ((input.in[i + 3] || 0) << 24)
+			plaintextWords.push(word >>> 0) // Ensure unsigned 32-bit
+		}
+
+		// Convert ciphertext from bytes to u32 words (little-endian)
+		const ciphertextWords: number[] = []
+		for(let i = 0; i < input.out.length; i += 4) {
+			const word = (input.out[i] || 0) |
+						 ((input.out[i + 1] || 0) << 8) |
+						 ((input.out[i + 2] || 0) << 16) |
+						 ((input.out[i + 3] || 0) << 24)
+			ciphertextWords.push(word >>> 0) // Ensure unsigned 32-bit
+		}
+
+		// Pad arrays to expected sizes
+		while(plaintextWords.length < 32) {
+			plaintextWords.push(0)
+		}
+
+		while(ciphertextWords.length < 32) {
+			ciphertextWords.push(0)
+		}
+
+		return {
+			key: keyWords,
+			nonce: nonceWords,
+			counter: input.counter,
+			plaintext: plaintextWords,
+			ciphertext: ciphertextWords
+		} as any
 	}
 
 	const { chunkSize, bitsPerWord } = CONFIG[algorithm]
@@ -39,8 +102,9 @@ export function convertToNoirWitness(
 	// Convert Uint8Arrays to regular arrays for Noir
 	const keyArray = Array.from(input.key)
 	const counterArray = Array.from(fullCounter)
-	const plaintextArray = Array.from(input.in)
-	const expectedCiphertextArray = Array.from(input.out)
+	// !NOTE: use ciphertext as input, plaintext as output
+	const cipherTextArray = Array.from(input.in)
+	const plainTextArray = Array.from(input.out)
 
 	// Validate key size based on algorithm
 	if(algorithm === 'aes-256-ctr' && keyArray.length !== 32) {
@@ -50,12 +114,12 @@ export function convertToNoirWitness(
 	}
 
 	// Validate block sizes
-	if(plaintextArray.length !== expectedSizeBytes) {
-		throw new Error(`Invalid plaintext size: expected ${expectedSizeBytes} bytes, got ${plaintextArray.length}`)
+	if(plainTextArray.length !== expectedSizeBytes) {
+		throw new Error(`Invalid plaintext size: expected ${expectedSizeBytes} bytes, got ${plainTextArray.length}`)
 	}
 
-	if(expectedCiphertextArray.length !== expectedSizeBytes) {
-		throw new Error(`Invalid ciphertext size: expected ${expectedSizeBytes} bytes, got ${expectedCiphertextArray.length}`)
+	if(cipherTextArray.length !== expectedSizeBytes) {
+		throw new Error(`Invalid ciphertext size: expected ${expectedSizeBytes} bytes, got ${cipherTextArray.length}`)
 	}
 
 	// For AES, the Noir circuit expects:
@@ -65,10 +129,10 @@ export function convertToNoirWitness(
 	// - expected_ciphertext: [u8; 16]
 	return {
 		key: keyArray,
-		counter: counterArray,
-		plaintext: plaintextArray,
 		// eslint-disable-next-line camelcase
-		expected_ciphertext: expectedCiphertextArray
+		counter: counterArray,
+		plaintext: plainTextArray,
+		ciphertext: cipherTextArray
 		// NOTE: operator.groth16Prove(wtnsSerialised, logger) needs literal `expected_ciphertext` for generate proof
 	}
 }
@@ -86,36 +150,5 @@ export function getCircuitFilename(algorithm: EncryptionAlgorithm): string {
 		return 'chacha20.json'
 	default:
 		throw new Error(`Unknown algorithm: ${algorithm}`)
-	}
-}
-
-/**
- * Convert ChaCha20 ZKProofInput to Noir witness format
- * Based on the Noir circuit main function signature:
- * fn main(key: [u32; 8], ciphertext: [u32; 32], plaintext: pub [u32; 32], nonce: pub [u32; 3], counter: pub u32)
- */
-function convertChaCha20ToNoirWitness(input: ZKProofInput): NoirWitnessInput {
-	// ChaCha20 uses 32-bit words, convert from bytes to u32 array
-	const keyU32 = new Uint32Array(input.key.buffer, input.key.byteOffset, input.key.byteLength / 4)
-	const plaintextU32 = new Uint32Array(input.in.buffer, input.in.byteOffset, input.in.byteLength / 4)
-	const ciphertextU32 = new Uint32Array(input.out.buffer, input.out.byteOffset, input.out.byteLength / 4)
-	
-	// Convert nonce from bytes to u32 array (3 words for ChaCha20)
-	const nonceU32 = new Uint32Array(3)
-	const nonceView = new DataView(input.nonce.buffer, input.nonce.byteOffset)
-	for(let i = 0; i < 3; i++) {
-		nonceU32[i] = nonceView.getUint32(i * 4, true) // little-endian
-	}
-	
-	// Return in the format expected by Noir circuit
-	return {
-		key: Array.from(keyU32), // [u32; 8]
-		ciphertext: Array.from(ciphertextU32), // [u32; 32] - private input
-		plaintext: Array.from(plaintextU32), // [u32; 32] - public input
-		nonce: Array.from(nonceU32), // [u32; 3] - public input
-		counter: input.counter, // u32 - public input
-		// Legacy fields for compatibility
-		// eslint-disable-next-line camelcase
-		expected_ciphertext: Array.from(ciphertextU32)
 	}
 }
