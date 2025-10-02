@@ -96,4 +96,5 @@ export const ZK_CONFIG_MAP: {
 	),
 }
 
-export const ZK_CONFIGS = Object.keys(ZK_CONFIG_MAP) as ConfigItem[]
+export const ZK_CONFIGS = ['barretenberg'] as ConfigItem[]
+// export const ZK_CONFIGS = Object.keys(ZK_CONFIG_MAP) as ConfigItem[]

@@ -1,8 +1,8 @@
 import { randomBytes } from 'crypto'
 import { Bench } from 'tinybench'
 import { CONFIG } from '../config'
-import { BarretenbergOperator, EncryptionAlgorithm, isBarretenbergOperator, PrivateInput, PublicInput, ZKOperator } from '../types'
-import { generateZkWitness } from '../zk'
+import { BarretenbergOperator, EncryptionAlgorithm, isBarretenbergOperator, PrivateInput, PublicInput, Proof, ZKOperator } from '../types'
+import { generateZkWitness, getPublicSignals } from '../zk'
 import { encryptData, ZK_CONFIG_MAP, ZK_CONFIGS } from './utils'
 
 const ALL_ALGOS: EncryptionAlgorithm[] = [
@@ -21,14 +21,14 @@ const BENCHES = ALL_ALGOS.map((algo) => {
 
 	for(const engine of ZK_CONFIGS) {
 		const operator = ZK_CONFIG_MAP[engine](algo)
-		let witnesses: Uint8Array[]
+		let testData: Array<{ witness: Uint8Array, publicInput: PublicInput, plaintext: Uint8Array }>
 		bench = bench.add(
 			engine,
 			async() => {
 				try {
 					const now = Date.now()
-					await Promise.all(
-						witnesses.map((witness) => {
+					const proofs = await Promise.all(
+						testData.map(({ witness }) => {
 							if(isBarretenbergOperator(operator)) {
 								return operator.ultrahonkProve(witness)
 							} else {
@@ -38,7 +38,33 @@ const BENCHES = ALL_ALGOS.map((algo) => {
 					)
 					const elapsed = Date.now() - now
 					console.log(
-						`Generated ${witnesses.length} proofs for ${algo} using ${engine}, ${elapsed}ms`
+						`Generated ${testData.length} proofs for ${algo} using ${engine}, ${elapsed}ms`
+					)
+
+					// Verify all proofs
+					const verifyStart = Date.now()
+					const verifications = await Promise.all(
+						proofs.map((proofResult, i) => {
+							const { publicInput, plaintext } = testData[i]
+							const proof: Proof = {
+								algorithm: algo,
+								proofData: proofResult.proof,
+								plaintext
+							}
+							const publicSignals = getPublicSignals({ proof, publicInput })
+
+							if(isBarretenbergOperator(operator)) {
+								return operator.ultrahonkVerify(publicSignals, proofResult.proof)
+							} else {
+								return operator.groth16Verify(publicSignals, proofResult.proof)
+							}
+						})
+					)
+					const verifyElapsed = Date.now() - verifyStart
+
+					const allValid = verifications.every(v => v)
+					console.log(
+						`Verified ${proofs.length} proofs for ${algo} using ${engine}, ${verifyElapsed}ms, all valid: ${allValid}`
 					)
 				} catch(err) {
 					console.error(err)
@@ -46,9 +72,9 @@ const BENCHES = ALL_ALGOS.map((algo) => {
 			},
 			{
 				beforeEach: async() => {
-					witnesses = await prepareDataForAlgo(algo, operator)
+					testData = await prepareDataForAlgo(algo, operator)
 					console.log(
-						`Prepared ${witnesses.length} witnesses for ${algo} using ${engine}`
+						`Prepared ${testData.length} witnesses for ${algo} using ${engine}`
 					)
 				},
 			}
@@ -86,7 +112,7 @@ async function prepareDataForAlgo(
 		iv
 	)
 
-	const witnesses: Uint8Array[] = []
+	const testData: Array<{ witness: Uint8Array, publicInput: PublicInput, plaintext: Uint8Array }> = []
 	const chunkSizeBytes = chunkSize * bitsPerWord / 8
 
 	for(let i = 0; i < ciphertext.length; i += chunkSizeBytes) {
@@ -95,7 +121,7 @@ async function prepareDataForAlgo(
 			iv: iv,
 			offsetBytes: i
 		}
-		const { witness } = await generateZkWitness({
+		const { witness, plaintextArray } = await generateZkWitness({
 			algorithm: algo,
 			privateInput,
 			publicInput
@@ -103,10 +129,14 @@ async function prepareDataForAlgo(
 
 		const wtnsSerialised = await operator.generateWitness(witness)
 
-		witnesses.push(wtnsSerialised)
+		testData.push({
+			witness: wtnsSerialised,
+			publicInput,
+			plaintext: plaintextArray
+		})
 	}
 
-	return witnesses
+	return testData
 }
 
 main()

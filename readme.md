@@ -57,7 +57,13 @@ For Indie Hackers: [Check out our guidelines and potential grant opportunities](
 
 ## 📊 Performance Benchmarks
 
-### ChaCha20 Noir Circuit Benchmarks
+### ChaCha20 Benchmarks
+
+| Implementation | Latency (avg) | Latency (med) | Throughput (avg ops/s) | Throughput (med ops/s) | Samples |
+|---|---|---|---|---|---|
+| **Barretenberg (Noir)** | 14088261583 ns ± 0.00% | 14088261583 ns ± 0.00 | 0 ± 0.00% | 0 ± 0 | 1 |
+
+### Noir Circuit Benchmarks
 
 The following benchmarks were conducted for ChaCha20 encryption using Noir circuits with 1KB data payload (8 proof chunks):
 
@@ -72,6 +78,12 @@ The following benchmarks were conducted for ChaCha20 encryption using Noir circu
 - Chunk size: 128 bytes per proof
 - Total proofs generated: 8
 - Algorithm: ChaCha20 symmetric encryption
+
+**Hardware Specifications:**
+- Model: MacBook Pro (Model Identifier: MacBookPro18,1)
+- Chip: Apple M1 Pro
+- CPU: 10 cores (8 performance and 2 efficiency)
+- Memory: 32 GB
 
 **Running Benchmarks:**
 

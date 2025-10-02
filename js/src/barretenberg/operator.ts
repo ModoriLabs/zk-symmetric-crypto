@@ -93,6 +93,7 @@ export function makeBarretenbergZKOperator({
 			logger?: Logger
 		): Promise<boolean> {
 			const { backend: backendInstance } = await initializeBackend(logger)
+      logger?.info?.('Elysia study!!')
 			logger?.info?.('Verifying proof with UltraHonk backend...')
 			const startTime = Date.now()
 
